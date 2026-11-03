@@ -4,10 +4,15 @@ import { ArrowLeft, PlayCircle, FileText, CheckCircle, Loader2, ChevronRight, Lo
 import { courseApi } from "@/api/course.api";
 import { useAuth } from "@/store/AuthContext";
 import { toast } from "sonner";
+import useAudioAnalyser from "@/hooks/useAudioAnalyser";
+import TutorAvatar from "@/components/tutor/TutorAvatar";
 
 export default function CoursePlayer() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
+  const { volume, isAudioAvailable } = useAudioAnalyser(videoElement);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   
   const [course, setCourse] = useState<any>(null);
   const [enrollment, setEnrollment] = useState<any>(null);
@@ -125,37 +130,58 @@ export default function CoursePlayer() {
   const completedLessonIds = new Set(enrollment?.completedLessons?.map((l: any) => l.id) || []);
   const isCurrentCompleted = completedLessonIds.has(activeLesson?.id);
   const isFullyCompleted = enrollment?.progress === 100;
+  const tutorState =
+    isVideoPlaying &&
+    (!isAudioAvailable || volume > 0.04)
+      ? "speaking"
+      : "idle";
+
+const useFallbackAnimation =
+  isVideoPlaying && !isAudioAvailable;
   
   // Helper to figure out how to render the video URL
   const renderVideo = (url?: string) => {
-    if (!url) return null;
-    
-    if (url.toLowerCase().endsWith(".mp4") || url.toLowerCase().endsWith(".webm") || url.toLowerCase().endsWith(".ogg")) {
-      return (
-        <video controls className="w-full h-full bg-black" src={url}>
-          Your browser does not support the video tag.
-        </video>
-      );
-    }
-    
-    let embedUrl = url;
-    if (url.includes("youtube.com/watch?v=")) {
-      embedUrl = url.replace("watch?v=", "embed/");
-    } else if (url.includes("youtu.be/")) {
-      embedUrl = url.replace("youtu.be/", "youtube.com/embed/");
-    }
-    
+  if (!url) return null;
+
+  if (
+    url.toLowerCase().endsWith(".mp4") ||
+    url.toLowerCase().endsWith(".webm") ||
+    url.toLowerCase().endsWith(".ogg")
+  ) {
     return (
-      <iframe 
+      <video
+        ref={setVideoElement}
+        controls
         className="w-full h-full bg-black"
-        src={embedUrl} 
-        title="Video Player" 
-        frameBorder="0" 
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-        allowFullScreen 
-      />
+        src={url}
+        onPlay={() => setIsVideoPlaying(true)}
+        onPause={() => setIsVideoPlaying(false)}
+        onEnded={() => setIsVideoPlaying(false)}
+      >
+        Your browser does not support the video tag.
+      </video>
     );
-  };
+  }
+
+  let embedUrl = url;
+
+  if (url.includes("youtube.com/watch?v=")) {
+    embedUrl = url.replace("watch?v=", "embed/");
+  } else if (url.includes("youtu.be/")) {
+    embedUrl = url.replace("youtu.be/", "youtube.com/embed/");
+  }
+
+  return (
+    <iframe
+      className="w-full h-full bg-black"
+      src={embedUrl}
+      title="Video Player"
+      frameBorder="0"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowFullScreen
+    />
+  );
+};
 
   return (
     <div className="flex flex-col min-h-screen bg-background border-t border-border">
@@ -259,15 +285,12 @@ export default function CoursePlayer() {
             <div className="p-5 border-b border-border shrink-0 bg-primary/5">
               <h4 className="text-xs font-semibold text-secondary uppercase tracking-wider mb-2">Your Celebrity Mentor</h4>
               <div className="flex items-center gap-3">
-                <img
-                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(enrollment.mentor || "Virtual Mentor")}&background=8B5CF6&color=fff&bold=true`}
-                  alt={enrollment.mentor || "Virtual Mentor"}
-                  className="w-10 h-10 rounded-full object-cover border-2 border-secondary"
+                <TutorAvatar
+                state={tutorState}
+                mouthLevel={volume}
+                fallbackAnimation={useFallbackAnimation}
+                name={enrollment.mentor || "Virtual Mentor"}
                 />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate text-foreground">{enrollment.mentor || "Virtual Mentor"}</p>
-                  <p className="text-xs text-muted-foreground">Personalized Guide</p>
-                </div>
                 <button
                   onClick={() => {
                     setSelectedMentor(enrollment.mentor || "Virtual Mentor");
